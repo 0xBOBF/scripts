@@ -13,7 +13,7 @@
 # You will need to make the 'rootfs' directory yourself by installing a valid OS there. For example, I use 
 # a local copy of the slackware-current tree and install slackware using:
 #
-# installpkg --root /root/chroot-builds/rootfs /mnt/mirror/slackware64-current/slackware64/*.t?z
+# installpkg --root /root/chroot-builds/rootfs /mnt/mirror/slackware64-current/slackware64/*/*.t?z
 #
 # Note that '/root/chroot-builds/' is where I keep and run the chroot.sh script, adjust as needed.
 #
