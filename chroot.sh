@@ -15,6 +15,8 @@
 #
 # installpkg --root /root/chroot-builds/rootfs /mnt/mirror/slackware64-current/slackware64/*.t?z
 #
+# Note that '/root/chroot-builds/' is where I keep and run the chroot.sh script, adjust as needed.
+#
 # Written by Bob Funk. 2020, updated 2022.
 #
 
