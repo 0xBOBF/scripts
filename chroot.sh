@@ -1,16 +1,22 @@
 #!/bin/bash
+
+# This script will setup the bind mounts and overlayfs
+# for the chroot environment and chroot you in.
+# When you exit the chroot this script will also clean
+# up the binds and overlayfs.
 #
-# chroot.sh 
+# Starting with a fresh build environment is as simple as wiping the
+# "changes" directory and starting over.
 #
-# This script sets up a chroot environment in conjunction with an overlayfs, which is useful
-# as a build environment with ability to quickl reset to a clean state.
+# Added functionality to auto check and update the rootfs layer, if 
+# an update is available on the mirror (at the user's prompting). This
+# eases maintenance of the clean base layer, leaving just the changes 
+# layer for the user to manage manually.
 #
-# This script also contains helper code to initialize and maintain the base rootfs from a
-# locally hosted Slackware mirror.
-# 
-# When you exit the chroot, this script cleans up its mounts and overlayfs.
-#
-# Written by Bob Funk. 2020, updated 2022. Rewritten in 2023, and added helper functions.
+# Added functionality to use a common/shared home directory for root.
+# This shared directory is called "root-home", and gets bind mounted
+# to the chroot directory. This allows keeping a persistent home dir
+# for root between wipes of the changes directory.
 
 SLACK_TYPE="slackware64"
 SLACK_VERSION="15.0"
@@ -38,8 +44,11 @@ CHROOT="$BASEDIR/.$SLACK_STRING-chroot"
 # Location to bind the local mirror, so we can access it from in the chroot:
 LOCAL_MIRROR="/mnt/local-mirror" 
 
+# Use a shared home directory for root user (/root):
+SHARED_ROOT_HOME_DIR="$BASEDIR/root-home"
+
 # Make the directories if needed:
-for dir in "$BASEDIR" "$ROOTFS" "$CHANGES" "$WORKDIR" "$CHROOT"
+for dir in "$BASEDIR" "$ROOTFS" "$CHANGES" "$WORKDIR" "$CHROOT" "$CHANGES/root" "$SHARED_ROOT_HOME_DIR"
 do
   [ ! -d $dir ] && mkdir $dir
 done
@@ -101,7 +110,7 @@ EOF
     if [ "$ANSWER" = "y" -o "$ANSWER" = "Y" ]; then
       cat << EOF > "$ROOTFS/upgradepkg.sh"
 #!/bin/bash
-/sbin/upgradepkg --terse $LOCAL_MIRROR/patches/packages/*.t?z
+/sbin/upgradepkg --install-new --terse $LOCAL_MIRROR/patches/packages/*.t?z
 EOF
       chroot "$ROOTFS" /bin/bash /upgradepkg.sh
     fi
@@ -115,7 +124,7 @@ fi
 if [ "$SLACK_VERSION" = "current" ]; then
   cat << EOF > "$ROOTFS/upgradepkg.sh"
 #!/bin/bash
-/sbin/upgradepkg --dry-run $LOCAL_MIRROR/$SLACK_TYPE/*/*.t?z | grep -v 'already installed' | wc -l
+/sbin/upgradepkg --install-new --dry-run $LOCAL_MIRROR/$SLACK_TYPE/*/*.t?z | grep -v 'already installed' | wc -l
 EOF
   UPGRADE_COUNT=$(chroot "$ROOTFS" /bin/bash /upgradepkg.sh)
   if [ "$UPGRADE_COUNT" -gt "0" ]; then
@@ -127,7 +136,7 @@ EOF
     if [ "$ANSWER" = "y" -o "$ANSWER" = "Y" ]; then
       cat << EOF > "$ROOTFS/upgradepkg.sh"
 #!/bin/bash
-/sbin/upgradepkg --terse $LOCAL_MIRROR/$SLACK_TYPE/*/*.t?z
+/sbin/upgradepkg --install-new --terse $LOCAL_MIRROR/$SLACK_TYPE/*/*.t?z
 EOF
       chroot "$ROOTFS" /bin/bash /upgradepkg.sh
     fi
@@ -145,21 +154,24 @@ mount -t overlay overlay -o lowerdir="$ROOTFS",upperdir="$CHANGES",workdir="$WOR
 mount -B /proc "$CHROOT/proc"
 mount -B /sys "$CHROOT/sys"
 mount -B /dev "$CHROOT/dev"
+mount -B /dev/pts "$CHROOT/dev/pts"
 mount -B /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 mount -B "$SLACK_MIRROR" "$CHROOT$LOCAL_MIRROR"
+mount -B "$SHARED_ROOT_HOME_DIR" "$CHROOT/root"
 
 # Enter the chroot environment:
-export HOME="/root"
 printf "You are now in the chroot build environment.\nType 'exit' when you are done.\n"
 
-chroot "$CHROOT" /bin/bash -l
+env -i HOME=/root TERM=$TERM chroot "$CHROOT" /bin/bash -l
 
 # Unmount overlay and bind mounts after exiting chroot:
 umount "$CHROOT/proc"
 umount "$CHROOT/sys"
+umount "$CHROOT/dev/pts"
 umount "$CHROOT/dev"
 umount "$CHROOT/etc/resolv.conf"
 umount "$CHROOT$LOCAL_MIRROR"
+umount "$CHROOT/root"
 umount "$CHROOT"
 
 # All done. Grab packages from the changes/tmp directory, or wherever they are built under
